@@ -2,17 +2,7 @@ import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
 import { cva, type VariantProps } from "class-variance-authority"
 
-import { cn } from "../../lib/utils"
-
-
-//If you want to use a button simple import it in the file you want to use it in like this:
-// import { Button } from '@/components/ui/button'
-//then customize it using the variant and size props like this:
-// <Button variant="destructive" size="lg">Click me</Button>
-
-// This file is for the button component that will be used throughout the app
-// It uses class-variance-authority (cva) to create a button with different variants and sizes
-// The button can be used as a regular button or as a child component using the "asChild" prop
+import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
   "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
