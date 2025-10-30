@@ -12,7 +12,7 @@ import { PersistedInput as UserInput} from "@/components/ui/inputHomePage";
 
 
 //import ticketmaster_API from "../../lib/ticketmasterDiscoveryEndpoint";
-//import usgsTrails_API from "../../lib/USGSTrailEndpoint";
+
 //import  airportGET  from "../../lib/AirportEndpoint";
 //import Weather from "../../lib/weatherEndpoint";
 //import amadeusGet from "../../lib/AmadeusServer";
