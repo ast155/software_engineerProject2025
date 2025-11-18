@@ -1,141 +1,134 @@
-const tmKey = "AxXbvSaSd0AFFgqMUj0HpY9aMp1HIrTx";
-const baseUrl = "https://app.ticketmaster.com/discovery/v2/events.json";
-const commonParams =  `countryCode=US&size=100&sort=relevance,desc&apikey=${tmKey}`;
+// USA-wide Ticketmaster search
+// Always returns events with venue (for map + weather)
 
-//currently nor using this functino but might use it later
-//Function to search isFiveDigitZip searches by zip code if the input is a 5 digit zip code
-//const isFiveDigitZip = (s: string) => /^\d{5}$/.test((s ?? "").trim());
+export default async function GET_keyword(keyword: string, location?: string) {
+  const apiKey = "AxXbvSaSd0AFFgqMUj0HpY9aMp1HIrTx";
 
-// Parse: "City, ST [ZIP]" or "City ST [ZIP]" or just "ZIP" or just "City"
-function parseCityStateZip(raw: string) {
-  const s = (raw ?? "").trim();
+  const kw = (keyword || "").trim();
+  const loc = (location || "").trim();
 
-  // find a ZIP anywhere
-  const zipMatch = s.match(/\b\d{5}\b/);
-  const postalCode = zipMatch ? zipMatch[0] : undefined;
+  // Build search params
+  const buildParams = (params: any) => {
+    const p = new URLSearchParams({
+      apikey: apiKey,
+      countryCode: "US",
+      size: "200",
+      sort: "date,asc",
+    });
+    Object.entries(params).forEach(([k, v]) => v && p.append(k, v as string));
+    return p.toString();
+  };
 
-  // if it has a comma, assume "City, ST ..."
-  const parts = s.split(",").map(p => p.trim());
-  let city: string | undefined;
-  let stateCode: string | undefined;
+  // Location detection
+  let locationFilters: any = {};
+  if (loc) {
+    const isState = /^[A-Za-z]{2}$/i.test(loc);
+    const hasComma = loc.includes(",");
+    const [city, state] = hasComma
+      ? loc.split(",").map((s) => s.trim())
+      : [loc, ""];
 
-  if (parts.length >= 2) {
-    city = parts[0] || undefined;
-    const right = parts.slice(1).join(" "); // ST [ZIP...]
-    const st = right.match(/\b[A-Za-z]{2}\b/);
-    stateCode = st ? st[0].toUpperCase() : undefined;
-  } else {
-    // no comma → maybe "City ST" or just "City" or just "ZIP"
-    const tokens = s.split(/\s+/);
-    const maybeST = tokens[tokens.length - 1];
-    if (/^[A-Za-z]{2}$/.test(maybeST)) {
-      stateCode = maybeST.toUpperCase();
-      city = tokens.slice(0, -1).join(" ").replace(/\b\d{5}\b/g, "").trim() || undefined;
-    } else if (!postalCode) {
-      city = s || undefined;
+    if (hasComma && city && state) {
+      locationFilters.city = city;
+      locationFilters.stateCode = state.toUpperCase();
+    } else if (isState) {
+      locationFilters.stateCode = loc.toUpperCase();
+    } else {
+      locationFilters.city = loc;
     }
   }
 
-  // clean any stray zip from city
-  if (city) city = city.replace(/\b\d{5}\b/g, "").trim() || undefined;
+  // Check for venue
+  const hasVenue = (ev: any) =>
+    ev?._embedded?.venues?.[0]?.location?.latitude &&
+    ev?._embedded?.venues?.[0]?.location?.longitude;
 
-  return { city, stateCode, postalCode };
-}
+  // Main event search (keyword + location)
+  const localURL = `https://app.ticketmaster.com/discovery/v2/events.json?${buildParams({
+    keyword: kw || undefined,
+    classificationName:
+      "music,sports,arts,theatre,comedy,family,miscellaneous",
+    ...locationFilters,
+  })}`;
 
-// Build the URL by appending ONLY params the user provided.
-function buildEventsUrl(params: { city?: string; stateCode?: string; postalCode?: string; size?: number; page?: number }) {
-  const size = Math.max(1, Math.min(params.size ?? 100, 500));
-  const page = Math.max(0, params.page ?? 0);
-
-  let url = `${baseUrl}?countryCode=US&size=${size}&page=${page}&sort=relevance,desc&apikey=${tmKey}`;
-  if (params.postalCode) url += `&postalCode=${encodeURIComponent(params.postalCode)}`;
-  if (params.city) url += `&city=${encodeURIComponent(params.city)}`;
-  if (params.stateCode) url += `&stateCode=${encodeURIComponent(params.stateCode)}`;
-  return url;
-}
-
-// small helper to fetch one page safely
-async function fetchPage(url: string) {
-  const r = await fetch(url, { cache: "no-store" });
-  if (!r.ok) return null;
-  try {
-    return await r.json();
-  } catch {
-    return null;
-  }
-}
-
-// --- public function (same signature); now with pagination + aggregation ---
-export default async function GET_area(input: string) {
-  // parse the input string into city/state/postalCode params
-  const params = parseCityStateZip(input);
-
-  // you can tweak these two to stress-test:
-  const pageSize = 100;   // TM often caps at ~100 per page even if you ask for 500
-  const maxPages = 5;     // hard stop so you don’t overfetch (100 * 5 = ~500 events)
-
-  // first page
-  const firstUrl = buildEventsUrl({ ...params, size: pageSize, page: 0 });
+  console.log("LOCAL SEARCH:", localURL);
 
   try {
-    const first = await fetchPage(firstUrl);
-    if (!first) {
-      // keep your Response-on-error shape
-      const body = JSON.stringify({
-        ok: false,
-        keyword: input,
-        url: firstUrl,
-        error: "fetch failed",
-        data: { _embedded: { events: [] } },
-      });
-      return new Response(body, {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
+    const localRes = await fetch(localURL, { cache: "no-store" });
+    const localData = await localRes.json();
+    let localEvents = localData?._embedded?.events || [];
+
+    // Keep only events with venue
+    localEvents = localEvents.filter(hasVenue);
+
+    if (localEvents.length > 0) {
+      return {
+        ...localData,
+        _embedded: { events: localEvents },
+        searchKeyword: kw,
+        searchLocation: loc,
+      };
     }
 
-    const totalPages = Math.max(1, first?.page?.totalPages ?? 1);
-    const events: any[] = first?._embedded?.events ?? [];
+    // Attraction search (artist/team)
+    if (kw) {
+      const attrURL = `https://app.ticketmaster.com/discovery/v2/attractions.json?${buildParams(
+        { keyword: kw }
+      )}`;
 
-    // pull subsequent pages up to maxPages or server-reported total
-    const pagesToGet = Math.min(maxPages, totalPages) - 1; // we already fetched page 0
-    for (let p = 1; p <= pagesToGet; p++) {
-      const url = buildEventsUrl({ ...params, size: pageSize, page: p });
-      const data = await fetchPage(url);
-      const batch = data?._embedded?.events ?? [];
-      if (batch.length === 0) break;
-      events.push(...batch);
+      console.log("ATTRACTION SEARCH:", attrURL);
+
+      const attrRes = await fetch(attrURL, { cache: "no-store" });
+      const attrData = await attrRes.json();
+      const attractions = attrData?._embedded?.attractions || [];
+
+      if (attractions.length > 0) {
+        const artist = attractions[0];
+
+        // Get all events for the artist nationwide
+        const artistEventURL = `https://app.ticketmaster.com/discovery/v2/events.json?${buildParams(
+          { attractionId: artist.id }
+        )}`;
+
+        console.log("ARTIST EVENT SEARCH:", artistEventURL);
+
+        const artistEventRes = await fetch(artistEventURL, {
+          cache: "no-store",
+        });
+        const artistEventData = await artistEventRes.json();
+        let artistEvents = artistEventData?._embedded?.events || [];
+
+        artistEvents = artistEvents.filter(hasVenue);
+
+        if (artistEvents.length > 0) {
+          return {
+            ...artistEventData,
+            _embedded: { events: artistEvents },
+            searchKeyword: kw,
+            searchLocation: loc,
+          };
+        }
+      }
     }
 
-    // build a single, stable TM-like payload with all collected events
-    const combined = {
-      //use the same shape as Ticketmaster’s response and use ...first to copy other metadata
-      //but overwrite _embedded.events with our combined list
-      //and adjust page info to reflect what we actually collected
-      ...first,
-      _embedded: { events },
-      page: {
-        // reflect what we actually collected so your logs make sense
-        size: pageSize,
-        number: 0,
-        totalElements: first?.page?.totalElements ?? events.length,
-        totalPages: first?.page?.totalPages ?? 1,
-      },
+    // No results
+    return {
+      _embedded: { events: [] },
+      searchKeyword: kw,
+      searchLocation: loc,
     };
-
-    return combined;
-
-  } catch (e: any) {
-    const body = JSON.stringify({
-      ok: false,
-      keyword: input,
-      url: buildEventsUrl({ ...params, size: pageSize, page: 0 }),
-      error: e?.message || "fetch failed",
-      data: { _embedded: { events: [] } }, // placeholder on error
-    });
-    return new Response(body, {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    });
+  } catch (err: any) {
+    console.log("Error:", err);
+    return {
+      error: err?.message || "Search failed",
+      _embedded: { events: [] },
+      searchKeyword: kw,
+      searchLocation: loc,
+    };
   }
 }
+
+
+
+
+

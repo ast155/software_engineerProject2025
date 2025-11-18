@@ -1,23 +1,59 @@
 "use client";
 
 import { useState } from "react";
-import { signIn } from "next-auth/react";
 
 export default function AuthPage() {
-  const [isLogin, setIsLogin] = useState(true); // toggle between login/signup
+  const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
 
+  // Login / Signup handler
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isLogin) {
-      // Login
-      await signIn("credentials", { email, password, redirect: false });
-    } else {
-      // Signup
-      // Add your signup API call here
-      console.log("Signup:", { name, email, password });
+    setMessage("");
+    setLoading(true);
+
+    try {
+      if (isLogin) {
+        // LOGIN
+        const res = await fetch("/api/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password }),
+        });
+
+        const data = await res.json();
+        if (data.success) {
+          localStorage.setItem("user", JSON.stringify(data.user));
+          window.location.href = "/account";
+          return;
+        }
+
+        setMessage(data.message || "Login failed");
+      } else {
+        // SIGNUP
+        const res = await fetch("/api/signup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, email, password }),
+        });
+
+        const data = await res.json();
+        if (data.success) {
+          localStorage.setItem("user", JSON.stringify(data.user));
+          window.location.href = "/account";
+          return;
+        }
+
+        setMessage(data.message || "Signup failed");
+      }
+    } catch {
+      setMessage("Something went wrong");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -27,6 +63,7 @@ export default function AuthPage() {
         <h1 className="text-2xl font-bold mb-6 text-center">
           {isLogin ? "Log In" : "Sign Up"}
         </h1>
+
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           {!isLogin && (
             <input
@@ -38,6 +75,7 @@ export default function AuthPage() {
               required
             />
           )}
+
           <input
             type="email"
             placeholder="Email"
@@ -46,6 +84,7 @@ export default function AuthPage() {
             className="px-4 py-2 border rounded bg-input text-foreground"
             required
           />
+
           <input
             type="password"
             placeholder="Password"
@@ -54,17 +93,27 @@ export default function AuthPage() {
             className="px-4 py-2 border rounded bg-input text-foreground"
             required
           />
+
           <button
             type="submit"
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-70"
+            disabled={loading}
           >
-            {isLogin ? "Log In" : "Sign Up"}
+            {loading ? "Please wait..." : isLogin ? "Log In" : "Sign Up"}
           </button>
         </form>
+
+        {message && (
+          <p className="text-sm mt-3 text-center text-red-400">{message}</p>
+        )}
+
         <p className="text-sm mt-4 text-center">
           {isLogin ? "Don't have an account?" : "Already have an account?"}{" "}
           <button
-            onClick={() => setIsLogin(!isLogin)}
+            onClick={() => {
+              setIsLogin(!isLogin);
+              setMessage("");
+            }}
             className="text-blue-500 hover:underline"
           >
             {isLogin ? "Sign Up" : "Log In"}

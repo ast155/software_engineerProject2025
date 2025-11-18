@@ -30,7 +30,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="min-h-screen bg-neutral-950 text-neutral-100 antialiased">
-        {/* client-only Prism background (renders fixed canvas behind content) */}
+        {/* client-only Prism background  */}
         <PrismClient />
 
         <div className="main fixed inset-0 -z-10 pointer-events-none max-w-6xl mx-auto px-4">
